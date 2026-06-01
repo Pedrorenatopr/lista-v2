@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sacolão Folha Verde - Compras</title>
+    <!-- Tailwind CSS para estilização rápida e responsiva -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons para ícones intuitivos -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Estilos personalizados para melhorar a usabilidade mobile */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f3f4f6;
+            -webkit-user-select: none;
+            user-select: none;
+            overscroll-behavior-y: contain;
+        }
+        
+        input {
+            -webkit-user-select: text;
+            user-select: text;
+        }
+
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 16px;
+            position: fixed;
+            z-index: 50;
+            left: 50%;
+            bottom: 80px;
+            transform: translateX(-50%);
+            font-size: 16px;
+            opacity: 0;
+            transition: opacity 0.3s, bottom 0.3s;
+        }
+        #toast.show {
+            visibility: visible;
+            opacity: 1;
+            bottom: 100px;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen max-w-md mx-auto bg-gray-50 shadow-xl relative">
+
+    <!-- Cabeçalho com Seletor de Loja -->
+    <header class="bg-emerald-600 text-white p-4 shadow-md z-10 rounded-b-xl">
+        <h1 class="text-2xl font-bold text-center mb-3">Gestão de Compras</h1>
+        
+        <!-- Botões de Troca de Loja -->
+        <div class="flex bg-emerald-700 p-1 rounded-xl mb-3">
+            <button onclick="mudarLoja('paranoa')" id="btn-loja-paranoa" class="flex-1 py-3 rounded-lg text-base font-bold bg-white text-emerald-800 shadow transition-all">
+                📍 Paranoá
+            </button>
+            <button onclick="mudarLoja('itapoa')" id="btn-loja-itapoa" class="flex-1 py-3 rounded-lg text-base font-bold text-emerald-100 transition-all">
+                📍 Itapoã
+            </button>
+        </div>
+
+        <p id="header-subtitle" class="text-emerald-100 text-center text-sm font-medium">Lista de Compras & Preços</p>
+    </header>
+
+    <!-- Área Principal Conteúdo -->
+    <main class="flex-1 overflow-y-auto p-4 pb-24" id="main-content">
+        
+        <!-- ABA 1: LISTA E COMPRAS (Consolidada) -->
+        <div id="tab-lista" class="tab-content active">
+            <div class="bg-white p-4 rounded-xl shadow-sm mb-6 border border-gray-100">
+                <label for="novoItem" class="block text-gray-700 font-semibold mb-2 text-lg" id="label-adicionar">
+                    Adicionar para: Paranoá
+                </label>
+                <div class="relative">
+                    <div class="flex gap-2">
+                        <input type="text" id="novoItem" placeholder="Pesquise ou digite..." 
+                               class="flex-1 bg-gray-100 border border-gray-300 text-gray-900 text-lg rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block p-3"
+                               oninput="filtrarSugestoes()"
+                               onkeypress="handleEnter(event)"
+                               autocomplete="off">
+                        <button onclick="adicionarItem()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg px-6 flex items-center justify-center transition-colors active:scale-95 shadow-md">
+                            <i data-lucide="plus" class="w-8 h-8"></i>
+                        </button>
+                    </div>
+                    <!-- Lista de Sugestões Suspensa -->
+                    <div id="sugestoes-container" class="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-2xl mt-1 hidden max-h-64 overflow-y-auto divide-y divide-gray-100">
+                        <!-- Itens sugeridos aparecem aqui -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-end mb-4 px-2">
+                <h2 class="text-xl font-bold text-gray-800">Itens na Lista</h2>
+                <div class="text-sm font-semibold text-emerald-600 bg-emerald-100 px-3 py-1 rounded-full" id="contador-itens">0 itens</div>
+            </div>
+
+            <div id="lista-planejamento" class="space-y-4">
+                <!-- Itens injetados via JS -->
+            </div>
+            
+            <div id="empty-lista" class="text-center text-gray-500 mt-10 hidden">
+                <i data-lucide="shopping-basket" class="w-16 h-16 mx-auto mb-3 text-gray-400"></i>
+                <p class="text-lg">A lista desta loja está vazia.<br>Adicione os produtos acima.</p>
+            </div>
+        </div>
+
+        <!-- ABA 2: RESUMO PARA FINANCEIRO -->
+        <div id="tab-resumo" class="tab-content">
+            
+            <div class="bg-emerald-600 text-white p-6 rounded-2xl shadow-lg mb-6 text-center">
+                <h2 class="text-lg text-emerald-100 font-medium mb-1">Total Gasto - <span id="resumo-nome-loja">Paranoá</span></h2>
+                <div class="text-4xl font-bold tracking-tight" id="resumo-total-gasto">R$ 0,00</div>
+            </div>
+
+            <div class="flex gap-3 mb-6">
+                <button onclick="compartilharWhatsApp()" class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-xl shadow-md flex items-center justify-center gap-2 active:scale-95 transition-transform text-lg">
+                    <i data-lucide="message-circle" class="w-6 h-6"></i>
+                    Enviar p/ WhatsApp
+                </button>
+            </div>
+
+            <h3 class="text-xl font-bold text-gray-800 mb-4 px-2">Relatório de Compras</h3>
+            <div id="lista-resumo" class="space-y-3 mb-8">
+                <!-- Itens injetados via JS -->
+            </div>
+
+            <button onclick="confirmarLimparLista()" class="w-full bg-red-100 text-red-600 font-bold py-4 rounded-xl border border-red-200 flex items-center justify-center gap-2 active:bg-red-200 transition-colors text-lg shadow-sm">
+                <i data-lucide="trash-2" class="w-6 h-6"></i>
+                Limpar Lista Desta Loja
+            </button>
+        </div>
+
+    </main>
+
+    <!-- Navegação Inferior (Bottom Nav) -->
+    <nav class="bg-white border-t border-gray-200 fixed bottom-0 w-full max-w-md pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <ul class="flex justify-around items-center h-20">
+            <li class="flex-1">
+                <button onclick="mudarAba('lista')" id="btn-tab-lista" class="w-full h-full flex flex-col items-center justify-center text-emerald-600 transition-colors">
+                    <i data-lucide="list-checks" class="w-7 h-7 mb-1"></i>
+                    <span class="text-sm font-bold">1. Compras</span>
+                </button>
+            </li>
+            <li class="flex-1 border-l border-gray-100">
+                <button onclick="mudarAba('resumo')" id="btn-tab-resumo" class="w-full h-full flex flex-col items-center justify-center text-gray-400 transition-colors">
+                    <i data-lucide="file-bar-chart" class="w-7 h-7 mb-1"></i>
+                    <span class="text-sm font-bold">2. Resumo</span>
+                </button>
+            </li>
+        </ul>
+    </nav>
+
+    <!-- Toast Notification -->
+    <div id="toast">Mensagem do sistema</div>
+
+    <!-- Modal de Confirmação (Limpar Lista) -->
+    <div id="modal-limpar" class="hidden fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl transform transition-all">
+            <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="alert-triangle" class="w-8 h-8 text-red-500"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900 mb-2 text-center">Limpar esta lista?</h3>
+            <p class="text-gray-600 text-lg mb-6 text-center" id="texto-modal-limpar">Isso vai apagar a lista do Paranoá. Tem certeza?</p>
+            <div class="flex gap-3">
+                <button onclick="fecharModalLimpar()" class="flex-1 py-3 bg-gray-100 text-gray-800 rounded-xl font-bold text-lg active:bg-gray-200">Cancelar</button>
+                <button onclick="limparListaToda()" class="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold text-lg active:bg-red-700 shadow-md">Sim, Apagar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts da Aplicação -->
+    <script>
+        lucide.createIcons();
+
+        // --- ESTADO DA APLICAÇÃO (MULTI-LOJA) ---
+        let lojaAtual = 'paranoa'; // Loja inicial padrão
+        const nomesLojas = {
+            paranoa: 'Sacolão Folha Verde Paranoá',
+            itapoa: 'Sacolão Folha Verde Itapoã'
+        };
+        const nomesCurtos = {
+            paranoa: 'Paranoá',
+            itapoa: 'Itapoã'
+        };
+
+        // Novo modelo de dados separando as listas
+        let dadosLojas = JSON.parse(localStorage.getItem('sfv_dados_lojas')) || {
+            paranoa: [],
+            itapoa: []
+        };
+        
+        const produtosCatalogo = [
+            "Abacate", "Abacaxi", "Abóbora", "Abobrinha", "Acelga", "Acerola", "Agrião", "Alecrim", "Alface Americana", "Alface Crespa", "Alho", "Alho-poró", "Ameixa", "Amora", 
+            "Banana da Terra", "Banana Maçã", "Banana Nanica", "Banana Prata", "Batata Baroa (Mandioca)", "Batata Doce", "Batata Inglesa", "Berinjela", "Beterraba", "Brócolis", 
+            "Caju", "Caqui", "Carambola", "Cebola Branca", "Cebola Roxa", "Cebolinha", "Cenoura", "Cereja", "Chuchu", "Coentro", "Couve Manteiga", "Couve-flor", 
+            "Espinafre", "Figo", "Goiaba", "Hortelã", "Inhame", "Jiló", "Kiwi", "Laranja Lima", "Laranja Pera", "Limão Siciliano", "Limão Taiti", 
+            "Maçã Fuji", "Maçã Gala", "Mamão Formosa", "Mamão Papaia", "Mandioca / Macaxeira", "Manga Palmer", "Manga Tommy", "Manjericão", "Maracujá", "Melancia", "Melão", "Morango", 
+            "Nabo", "Pepino", "Pera", "Pêssego", "Pimentão Amarelo", "Pimentão Verde", "Pimentão Vermelho", "Quiabo", 
+            "Repolho Branco", "Repolho Roxo", "Rúcula", "Salsa / Salsinha", "Tangerina / Ponkan", "Tomate Carmem", "Tomate Cereja", "Uva Niágara", "Uva Thompson", "Vagem"
+        ].sort((a, b) => a.localeCompare(b)); 
+
+        const formatarDinheiro = (valor) => {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
+        };
+
+        function mostrarToast(mensagem) {
+            const toast = document.getElementById("toast");
+            toast.textContent = mensagem;
+            toast.className = "show";
+            setTimeout(function(){ toast.className = toast.className.replace("show", ""); }, 3000);
+        }
+
+        // --- TROCA DE LOJAS ---
+        function mudarLoja(novaLoja) {
+            lojaAtual = novaLoja;
+            
+            // Atualiza botões do cabeçalho
+            const btnParanoa = document.getElementById('btn-loja-paranoa');
+            const btnItapoa = document.getElementById('btn-loja-itapoa');
+
+            if(lojaAtual === 'paranoa') {
+                btnParanoa.className = "flex-1 py-3 rounded-lg text-base font-bold bg-white text-emerald-800 shadow transition-all";
+                btnItapoa.className = "flex-1 py-3 rounded-lg text-base font-bold text-emerald-100 transition-all";
+            } else {
+                btnItapoa.className = "flex-1 py-3 rounded-lg text-base font-bold bg-white text-emerald-800 shadow transition-all";
+                btnParanoa.className = "flex-1 py-3 rounded-lg text-base font-bold text-emerald-100 transition-all";
+            }
+
+            // Atualiza textos dinâmicos
+            document.getElementById('label-adicionar').textContent = `Adicionar para: ${nomesCurtos[lojaAtual]}`;
+            document.getElementById('resumo-nome-loja').textContent = nomesCurtos[lojaAtual];
+            document.getElementById('novoItem').value = ''; // Limpa a busca ao trocar de loja
+
+            renderizar();
+            mostrarToast(`Exibindo lista do ${nomesCurtos[lojaAtual]}`);
+        }
+
+        // --- NAVEGAÇÃO DE ABAS ---
+        function mudarAba(abaDestino) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('nav button').forEach(el => {
+                el.classList.remove('text-emerald-600');
+                el.classList.add('text-gray-400');
+            });
+
+            document.getElementById(`tab-${abaDestino}`).classList.add('active');
+            document.getElementById(`btn-tab-${abaDestino}`).classList.remove('text-gray-400');
+            document.getElementById(`btn-tab-${abaDestino}`).classList.add('text-emerald-600');
+
+            const subtitulo = document.getElementById('header-subtitle');
+            if(abaDestino === 'lista') subtitulo.textContent = "Lista de Compras & Preços";
+            if(abaDestino === 'resumo') subtitulo.textContent = "Resumo para o Financeiro";
+
+            renderizar();
+            document.getElementById('main-content').scrollTo({top: 0, behavior: 'smooth'});
+        }
+
+        // --- AUTOCOMPLETE E PESQUISA ---
+        function filtrarSugestoes() {
+            const input = document.getElementById('novoItem');
+            const query = input.value.trim().toLowerCase();
+            const container = document.getElementById('sugestoes-container');
+
+            if (query.length < 1) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            const termoLimpo = query.normalize('NFD').replace(/[\u0300-\u036f]/g, "");
+            
+            const filtrados = produtosCatalogo.filter(p => {
+                const pLimpo = p.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "");
+                return pLimpo.includes(termoLimpo);
+            });
+
+            if (filtrados.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            container.innerHTML = filtrados.map(p => `
+                <div onclick="adicionarItemSugerido('${p}')" class="p-4 text-lg font-medium text-gray-800 hover:bg-emerald-50 active:bg-emerald-100 cursor-pointer transition-colors flex items-center gap-3">
+                    <i data-lucide="search" class="w-5 h-5 text-gray-400"></i>
+                    ${p}
+                </div>
+            `).join('');
+            
+            lucide.createIcons();
+            container.classList.remove('hidden');
+        }
+
+        function adicionarItemSugerido(nome) {
+            document.getElementById('novoItem').value = nome;
+            document.getElementById('sugestoes-container').classList.add('hidden');
+            adicionarItem();
+        }
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') adicionarItem();
+        }
+
+        // --- GERENCIAMENTO DE ITENS (Atua na loja selecionada) ---
+        function adicionarItem() {
+            const input = document.getElementById('novoItem');
+            const nome = input.value.trim();
+            
+            if (nome === '') {
+                mostrarToast('Digite o nome do produto!');
+                return;
+            }
+
+            dadosLojas[lojaAtual].push({
+                id: Date.now().toString(),
+                nome: nome,
+                quantidade: '',
+                valor: ''
+            });
+
+            input.value = '';
+            input.focus();
+            document.getElementById('sugestoes-container').classList.add('hidden');
+            salvarDados();
+            renderizar();
+            mostrarToast(`${nome} adicionado em ${nomesCurtos[lojaAtual]}!`);
+        }
+
+        function removerItem(id) {
+            dadosLojas[lojaAtual] = dadosLojas[lojaAtual].filter(item => item.id !== id);
+            salvarDados();
+            renderizar();
+        }
+
+        function atualizarQtd(id, inputElement) {
+            const index = dadosLojas[lojaAtual].findIndex(item => item.id === id);
+            if (index !== -1) {
+                dadosLojas[lojaAtual][index].quantidade = inputElement.value;
+                salvarDados();
+            }
+        }
+
+        function atualizarValor(id, inputElement) {
+            const index = dadosLojas[lojaAtual].findIndex(item => item.id === id);
+            if (index !== -1) {
+                let valorText = inputElement.value.trim().replace(',', '.');
+                let valor = parseFloat(valorText);
+                
+                dadosLojas[lojaAtual][index].valor = isNaN(valor) ? '' : valor;
+                salvarDados();
+                atualizarTotalUI(); 
+            }
+        }
+
+        function atualizarTotalUI() {
+            let totalGasto = dadosLojas[lojaAtual].reduce((acc, item) => {
+                let val = parseFloat(item.valor);
+                return acc + (isNaN(val) ? 0 : val);
+            }, 0);
+            document.getElementById('resumo-total-gasto').textContent = formatarDinheiro(totalGasto);
+        }
+
+        // --- RESUMO E COMPARTILHAMENTO ---
+        function compartilharWhatsApp() {
+            const itensComprados = dadosLojas[lojaAtual].filter(item => parseFloat(item.valor) > 0);
+            
+            if (itensComprados.length === 0) {
+                mostrarToast('Preencha o valor de algum produto para enviar o resumo.');
+                return;
+            }
+
+            const dataHoje = new Date().toLocaleDateString('pt-BR');
+            let texto = `*RESUMO DE COMPRAS CEASA*\n🏢 *${nomesLojas[lojaAtual]}*\n📅 ${dataHoje}\n\n`;
+            let total = 0;
+
+            itensComprados.forEach(item => {
+                texto += `▪️ *${item.nome}*\n`;
+                let qtdStr = item.quantidade ? `Qtd: ${item.quantidade} | ` : '';
+                texto += `   ${qtdStr}Total: ${formatarDinheiro(item.valor)}\n\n`;
+                total += parseFloat(item.valor);
+            });
+
+            texto += `💰 *VALOR TOTAL GASTO: ${formatarDinheiro(total)}*`;
+
+            // Uso da API oficial recomendada
+            const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
+            window.open(url, '_blank');
+        }
+
+        function confirmarLimparLista() {
+            document.getElementById('texto-modal-limpar').textContent = `Isso vai apagar toda a lista do(a) ${nomesCurtos[lojaAtual]}. Tem certeza?`;
+            document.getElementById('modal-limpar').classList.remove('hidden');
+        }
+
+        function fecharModalLimpar() {
+            document.getElementById('modal-limpar').classList.add('hidden');
+        }
+
+        function limparListaToda() {
+            dadosLojas[lojaAtual] = [];
+            salvarDados();
+            fecharModalLimpar();
+            mudarAba('lista');
+            mostrarToast(`Lista de ${nomesCurtos[lojaAtual]} apagada!`);
+        }
+
+        // --- RENDERIZAÇÃO PRINCIPAL ---
+        function salvarDados() {
+            localStorage.setItem('sfv_dados_lojas', JSON.stringify(dadosLojas));
+        }
+
+        function renderizar() {
+            const listaPlanejamento = document.getElementById('lista-planejamento');
+            const listaResumo = document.getElementById('lista-resumo');
+            
+            listaPlanejamento.innerHTML = '';
+            listaResumo.innerHTML = '';
+
+            const comprasAtuais = dadosLojas[lojaAtual];
+
+            document.getElementById('contador-itens').textContent = `${comprasAtuais.length} item(ns)`;
+
+            comprasAtuais.forEach(item => {
+                listaPlanejamento.innerHTML += `
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3 transition-all focus-within:ring-2 focus-within:ring-emerald-400 focus-within:border-emerald-400">
+                        <div class="flex justify-between items-center border-b border-gray-50 pb-2">
+                            <span class="text-xl font-bold text-gray-800">${item.nome}</span>
+                            <button onclick="removerItem('${item.id}')" class="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                                <i data-lucide="trash-2" class="w-6 h-6"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="flex gap-3">
+                            <div class="flex-1">
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 ml-1">Qtd</label>
+                                <input type="text" oninput="atualizarQtd('${item.id}', this)" value="${item.quantidade || ''}" placeholder="Ex: 5 cx" 
+                                       class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-lg rounded-xl block p-3 focus:outline-none focus:bg-white transition-colors">
+                            </div>
+                            <div class="flex-[1.2]">
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 ml-1">Valor (R$)</label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                        <span class="text-gray-500 font-bold">R$</span>
+                                    </div>
+                                    <input type="number" step="0.01" inputmode="decimal" oninput="atualizarValor('${item.id}', this)" value="${item.valor || ''}" placeholder="0,00" 
+                                           class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-lg font-bold rounded-xl block p-3 pl-10 focus:outline-none focus:bg-white transition-colors">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                if (item.valor > 0 || item.quantidade !== '') {
+                    let valorMostrado = parseFloat(item.valor) > 0 ? formatarDinheiro(item.valor) : '<span class="text-gray-400 text-sm">Sem preço</span>';
+                    
+                    listaResumo.innerHTML += `
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+                            <div>
+                                <h4 class="text-lg font-bold text-gray-800">${item.nome}</h4>
+                                <p class="text-gray-500 font-medium">${item.quantidade || '<span class="italic font-normal">Qtd ñ inf.</span>'}</p>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-lg font-bold text-emerald-600">${valorMostrado}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            document.getElementById('empty-lista').classList.toggle('hidden', comprasAtuais.length > 0);
+            
+            if(comprasAtuais.length === 0 || comprasAtuais.filter(i => parseFloat(i.valor) > 0 || i.quantidade !== '').length === 0){
+                listaResumo.innerHTML = `
+                    <div class="text-center text-gray-500 mt-6 mb-6">
+                        <i data-lucide="receipt" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
+                        <p>Nenhum item preenchido para<br>a loja ${nomesCurtos[lojaAtual]}.</p>
+                    </div>
+                `;
+            }
+
+            atualizarTotalUI();
+            lucide.createIcons();
+        }
+
+        // Renderiza na carga inicial
+        renderizar();
+
+    </script>
+</body>
+</html>
