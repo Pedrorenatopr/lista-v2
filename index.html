@@ -215,6 +215,18 @@
             itapoa: []
         };
         
+        // Migração de dados antigos para a nova lógica de multiplicação (Quantidade x Preço Unitário)
+        Object.keys(dadosLojas).forEach(loja => {
+            dadosLojas[loja].forEach(item => {
+                if (item.valor !== undefined) {
+                    item.preco = item.valor; // Move o valor para o novo campo de preço unitário
+                    item.quantidade = parseFloat(item.quantidade) || ''; // Transforma strings antigas em números
+                    delete item.valor; // Remove a chave antiga
+                }
+            });
+        });
+        localStorage.setItem('sfv_dados_lojas', JSON.stringify(dadosLojas));
+        
         const produtosCatalogo = [
             "Abacate", "Abacaxi", "Abóbora", "Abobrinha", "Acelga", "Acerola", "Agrião", "Alecrim", "Alface Americana", "Alface Crespa", "Alho", "Alho-poró", "Ameixa", "Amora", 
             "Banana da Terra", "Banana Maçã", "Banana Nanica", "Banana Prata", "Batata Baroa (Mandioca)", "Batata Doce", "Batata Inglesa", "Berinjela", "Beterraba", "Brócolis", 
@@ -339,7 +351,7 @@
                 id: Date.now().toString(),
                 nome: nome,
                 quantidade: '',
-                valor: ''
+                preco: '' // Alterado para armazenar o Preço por Kg ou Unidade
             });
 
             input.value = '';
@@ -356,40 +368,58 @@
             renderizar();
         }
 
+        // Atualiza a quantidade e recalcula automaticamente sem tirar o foco do teclado
         function atualizarQtd(id, inputElement) {
             const index = dadosLojas[lojaAtual].findIndex(item => item.id === id);
             if (index !== -1) {
-                dadosLojas[lojaAtual][index].quantidade = inputElement.value;
+                let val = inputElement.value.trim().replace(',', '.'); // Aceita vírgula ou ponto
+                dadosLojas[lojaAtual][index].quantidade = val;
                 salvarDados();
+                atualizarTotaisUI(); 
             }
         }
 
-        function atualizarValor(id, inputElement) {
+        // Atualiza o Preço Unitário e recalcula automaticamente
+        function atualizarPreco(id, inputElement) {
             const index = dadosLojas[lojaAtual].findIndex(item => item.id === id);
             if (index !== -1) {
-                let valorText = inputElement.value.trim().replace(',', '.');
-                let valor = parseFloat(valorText);
-                
-                dadosLojas[lojaAtual][index].valor = isNaN(valor) ? '' : valor;
+                let val = inputElement.value.trim().replace(',', '.');
+                dadosLojas[lojaAtual][index].preco = val;
                 salvarDados();
-                atualizarTotalUI(); 
+                atualizarTotaisUI(); 
             }
         }
 
-        function atualizarTotalUI() {
-            let totalGasto = dadosLojas[lojaAtual].reduce((acc, item) => {
-                let val = parseFloat(item.valor);
-                return acc + (isNaN(val) ? 0 : val);
-            }, 0);
+        // Recalcula as multiplicações (Qtd * Preço) e atualiza os textos na tela na hora
+        function atualizarTotaisUI() {
+            let totalGasto = 0;
+            
+            dadosLojas[lojaAtual].forEach(item => {
+                let q = parseFloat(item.quantidade) || 0;
+                let p = parseFloat(item.preco) || 0;
+                let tot = q * p;
+                totalGasto += tot;
+                
+                // Atualiza a barrinha verde de "Total do Item" embaixo do produto
+                let elSubtotal = document.getElementById(`total-item-${item.id}`);
+                if(elSubtotal) elSubtotal.textContent = formatarDinheiro(tot);
+            });
+            
+            // Atualiza o Total Geral lá na Aba de Resumo
             document.getElementById('resumo-total-gasto').textContent = formatarDinheiro(totalGasto);
         }
 
         // --- RESUMO E COMPARTILHAMENTO ---
         function compartilharWhatsApp() {
-            const itensComprados = dadosLojas[lojaAtual].filter(item => parseFloat(item.valor) > 0);
+            // Pega só o que foi preenchido com algo
+            const itensComprados = dadosLojas[lojaAtual].filter(item => {
+                let q = parseFloat(item.quantidade) || 0;
+                let p = parseFloat(item.preco) || 0;
+                return (q > 0 || p > 0);
+            });
             
             if (itensComprados.length === 0) {
-                mostrarToast('Preencha o valor de algum produto para enviar o resumo.');
+                mostrarToast('Preencha a quantidade ou o preço de algum produto para enviar o resumo.');
                 return;
             }
 
@@ -398,10 +428,14 @@
             let total = 0;
 
             itensComprados.forEach(item => {
+                let q = parseFloat(item.quantidade) || 0;
+                let p = parseFloat(item.preco) || 0;
+                let tot = q * p;
+
                 texto += `▪️ *${item.nome}*\n`;
-                let qtdStr = item.quantidade ? `Qtd: ${item.quantidade} | ` : '';
-                texto += `   ${qtdStr}Total: ${formatarDinheiro(item.valor)}\n\n`;
-                total += parseFloat(item.valor);
+                texto += `   Qtd: ${q} | Preço/un: ${formatarDinheiro(p)}\n`;
+                texto += `   Total: ${formatarDinheiro(tot)}\n\n`;
+                total += tot;
             });
 
             texto += `💰 *VALOR TOTAL GASTO: ${formatarDinheiro(total)}*`;
@@ -445,6 +479,11 @@
             document.getElementById('contador-itens').textContent = `${comprasAtuais.length} item(ns)`;
 
             comprasAtuais.forEach(item => {
+                // Prepara os valores numéricos para matemática
+                let q = parseFloat(item.quantidade) || 0;
+                let p = parseFloat(item.preco) || 0;
+                let totItem = q * p;
+
                 listaPlanejamento.innerHTML += `
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3 transition-all focus-within:ring-2 focus-within:ring-emerald-400 focus-within:border-emerald-400">
                         <div class="flex justify-between items-center border-b border-gray-50 pb-2">
@@ -455,36 +494,48 @@
                         </div>
                         
                         <div class="flex gap-3">
-                            <div class="flex-1">
+                            <div class="flex-[0.8]">
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 ml-1">Qtd</label>
-                                <input type="text" oninput="atualizarQtd('${item.id}', this)" value="${item.quantidade || ''}" placeholder="Ex: 5 cx" 
+                                <input type="number" step="0.01" inputmode="decimal" oninput="atualizarQtd('${item.id}', this)" value="${item.quantidade || ''}" placeholder="Ex: 5" 
                                        class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-lg rounded-xl block p-3 focus:outline-none focus:bg-white transition-colors">
                             </div>
                             <div class="flex-[1.2]">
-                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 ml-1">Valor (R$)</label>
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1 ml-1">Preço / un</label>
                                 <div class="relative">
                                     <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                                         <span class="text-gray-500 font-bold">R$</span>
                                     </div>
-                                    <input type="number" step="0.01" inputmode="decimal" oninput="atualizarValor('${item.id}', this)" value="${item.valor || ''}" placeholder="0,00" 
+                                    <input type="number" step="0.01" inputmode="decimal" oninput="atualizarPreco('${item.id}', this)" value="${item.preco || ''}" placeholder="0,00" 
                                            class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-lg font-bold rounded-xl block p-3 pl-10 focus:outline-none focus:bg-white transition-colors">
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Barra de Subtotal do Produto que se atualiza sozinha -->
+                        <div class="mt-1 bg-emerald-50 rounded-lg p-3 flex justify-between items-center border border-emerald-100">
+                            <span class="text-sm font-bold text-emerald-800">Total do Item:</span>
+                            <span class="text-lg font-bold text-emerald-600" id="total-item-${item.id}">${formatarDinheiro(totItem)}</span>
+                        </div>
                     </div>
                 `;
 
-                if (item.valor > 0 || item.quantidade !== '') {
-                    let valorMostrado = parseFloat(item.valor) > 0 ? formatarDinheiro(item.valor) : '<span class="text-gray-400 text-sm">Sem preço</span>';
+                // Renderiza no Resumo APENAS se tiver quantidade ou preço preenchidos
+                if (q > 0 || p > 0) {
+                    let detalhes = [];
+                    if (q > 0) detalhes.push(`Qtd: ${q}`);
+                    if (p > 0) detalhes.push(`R$ ${p.toFixed(2).replace('.',',')}/un`);
+                    
+                    let textoQtd = detalhes.length > 0 ? detalhes.join(' | ') : '<span class="italic font-normal">Pendente</span>';
+                    let textoTotal = totItem > 0 ? formatarDinheiro(totItem) : '<span class="text-gray-400 text-sm">Pendente</span>';
                     
                     listaResumo.innerHTML += `
                         <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
                             <div>
                                 <h4 class="text-lg font-bold text-gray-800">${item.nome}</h4>
-                                <p class="text-gray-500 font-medium">${item.quantidade || '<span class="italic font-normal">Qtd ñ inf.</span>'}</p>
+                                <p class="text-gray-500 font-medium text-sm">${textoQtd}</p>
                             </div>
                             <div class="text-right">
-                                <span class="text-lg font-bold text-emerald-600">${valorMostrado}</span>
+                                <span class="text-lg font-bold text-emerald-600">${textoTotal}</span>
                             </div>
                         </div>
                     `;
@@ -493,7 +544,8 @@
 
             document.getElementById('empty-lista').classList.toggle('hidden', comprasAtuais.length > 0);
             
-            if(comprasAtuais.length === 0 || comprasAtuais.filter(i => parseFloat(i.valor) > 0 || i.quantidade !== '').length === 0){
+            // Verifica se não há itens preenchidos para exibir mensagem vazia no Resumo
+            if(comprasAtuais.length === 0 || comprasAtuais.filter(i => (parseFloat(i.quantidade) || 0) > 0 || (parseFloat(i.preco) || 0) > 0).length === 0){
                 listaResumo.innerHTML = `
                     <div class="text-center text-gray-500 mt-6 mb-6">
                         <i data-lucide="receipt" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
@@ -502,7 +554,7 @@
                 `;
             }
 
-            atualizarTotalUI();
+            atualizarTotaisUI();
             lucide.createIcons();
         }
 
